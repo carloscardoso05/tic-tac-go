@@ -1,0 +1,25 @@
+@startuml Match
+
+participant Player1 as p1
+participant Player2 as p2
+participant Room as r
+
+p1 -> r : Create Room
+p1 \\- r : WebSocket connection
+p2 -> r : Ask to enter Room
+p2 \\- r : Accepts
+
+p1 -> r : Start Match
+r -> p1 : Match Started
+r -> p2 : Match Started
+
+loop while game not ends
+
+    p1 -> r : Marks
+    r -> r : Checks if game ended
+
+end
+
+r -> p1 : End connection
+r -> p2 : End connection
+@enduml
