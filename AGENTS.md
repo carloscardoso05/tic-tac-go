@@ -13,7 +13,7 @@ All Go commands run from `api/`, which is the module root (module name: `api`).
 cd api && go test ./...
 
 # Run a single test
-cd api && go test ./internal/domain/room -run TestP1WinsHorizontal
+cd api && go test ./internal/room -run TestP1WinsHorizontal
 
 # Start dev server with hot reload
 cd api && air
@@ -29,14 +29,14 @@ api/
   cmd/server/main.go        --- entrypoint (Gin bootstrap + connection loop)
   event/                     --- message types, parse/send, dispatch router
   internal/
-    domain/room/             --- pure game logic (board, tiles, victory, status)
-    lobby/                   --- room hub: create, join, mark, leave, broadcast
+    room/                     --- pure game logic (board, tiles, victory, status)
+    lobby/                    --- room hub: create, join, mark, leave, broadcast
     transport/               --- websocket accept/read/write wrappers
     client/                  --- connected player state (ID, name, conn)
   tmp/                       --- air build output (gitignored)
 ```
 
-`internal/domain/room` has no framework dependencies and is the only tested package.
+`internal/room` has no framework dependencies and is the only tested package.
 
 ### Flow
 
@@ -44,10 +44,10 @@ Client connects via `GET /ws` → WebSocket upgrade → connection loop reads `e
 
 ## Code generation
 
-`Tile` and `Status` enums in `internal/domain/room/room.go` use `go:generate stringer`. After changing enum values, regenerate:
+`Tile` and `Status` enums in `internal/room/room.go` use `go:generate stringer`. After changing enum values, regenerate:
 
 ```
-cd api && go generate ./internal/domain/room
+cd api && go generate ./internal/room
 ```
 
 This updates `tile_string.go` and `status_string.go` (committed, DO NOT EDIT by hand).
@@ -65,7 +65,7 @@ This updates `tile_string.go` and `status_string.go` (committed, DO NOT EDIT by 
 
 - Test framework: `github.com/stretchr/testify` (assert style)
 - No mocks or external dependencies needed
-- Test file: `api/internal/domain/room/room_test.go`
+- Test file: `api/internal/room/room_test.go`
 - Helper `newDefaultRoom()` creates a room with two players "Player 1" / "Player 2"
 
 ## Style notes

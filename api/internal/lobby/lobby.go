@@ -3,7 +3,7 @@ package lobby
 import (
 	"api/event"
 	"api/internal/client"
-	domainroom "api/internal/domain/room"
+	"api/internal/room"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,24 +12,24 @@ import (
 	"github.com/google/uuid"
 )
 
-type Room struct {
+type Match struct {
 	ID   uuid.UUID
-	Game *domainroom.Room
+	Game *room.Room
 	P1   *client.Client
 	P2   *client.Client
 	mu   sync.Mutex
 }
 
 type Lobby struct {
-	rooms   map[uuid.UUID]*Room
-	clients map[uuid.UUID]*Room
+	matches map[uuid.UUID]*Match
+	clients map[uuid.UUID]*Match
 	mu      sync.Mutex
 }
 
 func New() *Lobby {
 	return &Lobby{
-		rooms:   make(map[uuid.UUID]*Room),
-		clients: make(map[uuid.UUID]*Room),
+		matches: make(map[uuid.UUID]*Match),
+		clients: make(map[uuid.UUID]*Match),
 	}
 }
 
@@ -45,17 +45,17 @@ func (l *Lobby) HandleCreate(ctx context.Context, cl *client.Client, data json.R
 
 	cl.Name = payload.Name
 
-	room := &Room{
+	match := &Match{
 		ID: uuid.New(),
 		P1: cl,
 	}
 
 	l.mu.Lock()
-	l.rooms[room.ID] = room
-	l.clients[cl.ID] = room
+	l.matches[match.ID] = match
+	l.clients[cl.ID] = match
 	l.mu.Unlock()
 
-	msg := event.NewMessage(event.EventRoomCreated, event.RoomCreated{Room: room.ID.String()})
+	msg := event.NewMessage(event.EventRoomCreated, event.RoomCreated{Room: match.ID.String()})
 	return event.Write(ctx, cl.Conn, msg)
 }
 
@@ -79,39 +79,39 @@ func (l *Lobby) HandleJoin(ctx context.Context, cl *client.Client, data json.Raw
 	}
 
 	l.mu.Lock()
-	room, ok := l.rooms[roomID]
+	match, ok := l.matches[roomID]
 	l.mu.Unlock()
 	if !ok {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("room not found"))
 		return nil
 	}
 
-	room.mu.Lock()
-	defer room.mu.Unlock()
+	match.mu.Lock()
+	defer match.mu.Unlock()
 
-	if room.P2 != nil {
+	if match.P2 != nil {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("room is full"))
 		return nil
 	}
-	if room.P1 != nil && room.P1.ID == cl.ID {
+	if match.P1 != nil && match.P1.ID == cl.ID {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("cannot join your own room"))
 		return nil
 	}
 
-	room.P2 = cl
+	match.P2 = cl
 	l.mu.Lock()
-	l.clients[cl.ID] = room
+	l.clients[cl.ID] = match
 	l.mu.Unlock()
 
-	p1 := domainroom.Player{Name: room.P1.Name}
-	p2 := domainroom.Player{Name: cl.Name}
-	room.Game = domainroom.NewRoom(p1, p2)
+	p1 := room.Player{Name: match.P1.Name}
+	p2 := room.Player{Name: cl.Name}
+	match.Game = room.NewRoom(p1, p2)
 
 	joinedMsg := event.NewMessage(event.EventUserJoined, event.UserJoined{
-		Room: room.ID.String(),
+		Room: match.ID.String(),
 		User: cl.Name,
 	})
-	l.broadcast(ctx, room, joinedMsg)
+	l.broadcast(ctx, match, joinedMsg)
 
 	return nil
 }
@@ -128,59 +128,59 @@ func (l *Lobby) HandleMark(ctx context.Context, cl *client.Client, data json.Raw
 	}
 
 	l.mu.Lock()
-	room, ok := l.rooms[uuid.MustParse(payload.Room)]
+	match, ok := l.matches[uuid.MustParse(payload.Room)]
 	l.mu.Unlock()
 	if !ok {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("room not found"))
 		return nil
 	}
 
-	room.mu.Lock()
-	defer room.mu.Unlock()
+	match.mu.Lock()
+	defer match.mu.Unlock()
 
-	if room.Game == nil {
+	if match.Game == nil {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("game not started yet"))
 		return nil
 	}
 
-	if room.Game.CurrentPlayer().Name != cl.Name {
+	if match.Game.CurrentPlayer().Name != cl.Name {
 		event.WriteError(ctx, cl.Conn, fmt.Errorf("not your turn"))
 		return nil
 	}
 
-	tile := domainroom.Tile(payload.Tile)
-	if err := room.Game.Mark(tile); err != nil {
+	tile := room.Tile(payload.Tile)
+	if err := match.Game.Mark(tile); err != nil {
 		event.WriteError(ctx, cl.Conn, err)
 		return nil
 	}
 
 	tileMsg := event.NewMessage(event.EventTileMarked, event.TileMarked{
-		Room: room.ID.String(),
+		Room: match.ID.String(),
 		User: cl.Name,
 		Tile: payload.Tile,
 	})
-	l.broadcast(ctx, room, tileMsg)
+	l.broadcast(ctx, match, tileMsg)
 
-	status := room.Game.Status()
+	status := match.Game.Status()
 	switch status {
-	case domainroom.P1_WON:
+	case room.P1_WON:
 		endMsg := event.NewMessage(event.EventGameEnded, event.GameEnded{
-			Room:   room.ID.String(),
-			Winner: room.P1.Name,
+			Room:   match.ID.String(),
+			Winner: match.P1.Name,
 		})
-		l.broadcast(ctx, room, endMsg)
-	case domainroom.P2_WON:
+		l.broadcast(ctx, match, endMsg)
+	case room.P2_WON:
 		endMsg := event.NewMessage(event.EventGameEnded, event.GameEnded{
-			Room:   room.ID.String(),
-			Winner: room.P2.Name,
+			Room:   match.ID.String(),
+			Winner: match.P2.Name,
 		})
-		l.broadcast(ctx, room, endMsg)
-	case domainroom.DRAW:
+		l.broadcast(ctx, match, endMsg)
+	case room.DRAW:
 		endMsg := event.NewMessage(event.EventGameEnded, event.GameEnded{
-			Room:   room.ID.String(),
+			Room:   match.ID.String(),
 			Winner: "",
 		})
-		l.broadcast(ctx, room, endMsg)
+		l.broadcast(ctx, match, endMsg)
 	}
 
 	return nil
@@ -197,36 +197,36 @@ func (l *Lobby) Disconnect(cl *client.Client) {
 
 func (l *Lobby) removeClient(ctx context.Context, cl *client.Client) {
 	l.mu.Lock()
-	room := l.clients[cl.ID]
+	match := l.clients[cl.ID]
 	delete(l.clients, cl.ID)
-	if room != nil {
-		delete(l.rooms, room.ID)
+	if match != nil {
+		delete(l.matches, match.ID)
 	}
 	l.mu.Unlock()
 
-	if room != nil {
+	if match != nil {
 		leftMsg := event.NewMessage(event.EventUserLeft, event.UserLeft{
-			Room: room.ID.String(),
+			Room: match.ID.String(),
 			User: cl.Name,
 		})
-		l.broadcastExcept(ctx, room, cl, leftMsg)
+		l.broadcastExcept(ctx, match, cl, leftMsg)
 	}
 }
 
-func (l *Lobby) broadcast(ctx context.Context, room *Room, msg event.Message) {
-	if room.P1 != nil {
-		event.Write(ctx, room.P1.Conn, msg)
+func (l *Lobby) broadcast(ctx context.Context, match *Match, msg event.Message) {
+	if match.P1 != nil {
+		event.Write(ctx, match.P1.Conn, msg)
 	}
-	if room.P2 != nil {
-		event.Write(ctx, room.P2.Conn, msg)
+	if match.P2 != nil {
+		event.Write(ctx, match.P2.Conn, msg)
 	}
 }
 
-func (l *Lobby) broadcastExcept(ctx context.Context, room *Room, sender *client.Client, msg event.Message) {
-	if room.P1 != nil && room.P1.ID != sender.ID {
-		event.Write(ctx, room.P1.Conn, msg)
+func (l *Lobby) broadcastExcept(ctx context.Context, match *Match, sender *client.Client, msg event.Message) {
+	if match.P1 != nil && match.P1.ID != sender.ID {
+		event.Write(ctx, match.P1.Conn, msg)
 	}
-	if room.P2 != nil && room.P2.ID != sender.ID {
-		event.Write(ctx, room.P2.Conn, msg)
+	if match.P2 != nil && match.P2.ID != sender.ID {
+		event.Write(ctx, match.P2.Conn, msg)
 	}
 }
