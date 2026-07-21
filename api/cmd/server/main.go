@@ -1,10 +1,8 @@
 package main
 
 import (
-	"api/event"
-	"api/internal/client"
+	"api/internal/event"
 	"api/internal/lobby"
-	"api/internal/transport"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -16,7 +14,7 @@ func main() {
 
 	r := gin.Default()
 	r.GET("/ws", func(c *gin.Context) {
-		conn, err := transport.Accept(c)
+		conn, err := websocket.Accept(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
@@ -29,11 +27,11 @@ func main() {
 }
 
 func handleConn(ctx *gin.Context, conn *websocket.Conn, router *event.Router, l *lobby.Lobby) {
-	cl := client.New(conn, "")
+	cl := event.NewClient(conn, "")
 	defer l.Disconnect(cl)
 
 	for {
-		msg, err := transport.Read(ctx, conn)
+		msg, err := event.Read(ctx, conn)
 		if err != nil {
 			return
 		}
@@ -45,9 +43,9 @@ func handleConn(ctx *gin.Context, conn *websocket.Conn, router *event.Router, l 
 
 func setupRouter(l *lobby.Lobby) *event.Router {
 	router := event.NewRouter()
-	router.Handle("create", l.HandleCreate)
-	router.Handle("join", l.HandleJoin)
-	router.Handle("mark", l.HandleMark)
-	router.Handle("leave", l.HandleLeave)
+	router.Handle(event.EventCreate, l.HandleCreate)
+	router.Handle(event.EventJoin, l.HandleJoin)
+	router.Handle(event.EventMark, l.HandleMark)
+	router.Handle(event.EventLeave, l.HandleLeave)
 	return router
 }

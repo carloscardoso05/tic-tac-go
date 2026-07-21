@@ -7,11 +7,16 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 type EventType string
 
 const (
+	EventCreate       EventType = "create"
+	EventJoin         EventType = "join"
+	EventMark         EventType = "mark"
+	EventLeave        EventType = "leave"
 	EventRoomCreated  EventType = "room_created"
 	EventUserJoined   EventType = "user_joined"
 	EventUserLeft     EventType = "user_left"
@@ -19,6 +24,20 @@ const (
 	EventGameEnded    EventType = "game_ended"
 	EventErrorOccurred EventType = "error_occurred"
 )
+
+type Client struct {
+	ID   uuid.UUID
+	Name string
+	Conn *websocket.Conn
+}
+
+func NewClient(conn *websocket.Conn, name string) *Client {
+	return &Client{
+		ID:   uuid.New(),
+		Name: name,
+		Conn: conn,
+	}
+}
 
 type Message struct {
 	Type EventType       `json:"type"`
