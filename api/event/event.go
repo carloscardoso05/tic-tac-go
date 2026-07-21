@@ -12,9 +12,10 @@ import (
 type EventType string
 
 const (
-	EventTileMarked   EventType = "tile_marked"
+	EventRoomCreated  EventType = "room_created"
 	EventUserJoined   EventType = "user_joined"
 	EventUserLeft     EventType = "user_left"
+	EventTileMarked   EventType = "tile_marked"
 	EventGameEnded    EventType = "game_ended"
 	EventErrorOccurred EventType = "error_occurred"
 )
@@ -22,6 +23,10 @@ const (
 type Message struct {
 	Type EventType       `json:"type"`
 	Data json.RawMessage `json:"data"`
+}
+
+type RoomCreated struct {
+	Room string `json:"room" validate:"required"`
 }
 
 type TileMarked struct {
@@ -42,7 +47,7 @@ type UserLeft struct {
 
 type GameEnded struct {
 	Room   string `json:"room" validate:"required"`
-	Winner string `json:"winner" validate:"required"`
+	Winner string `json:"winner"`
 }
 
 type ErrorOccurred struct {
