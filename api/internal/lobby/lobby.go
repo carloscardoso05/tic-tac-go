@@ -187,6 +187,15 @@ func (l *Lobby) HandleMark(ctx context.Context, cl *client.Client, data json.Raw
 }
 
 func (l *Lobby) HandleLeave(ctx context.Context, cl *client.Client, data json.RawMessage) error {
+	l.removeClient(ctx, cl)
+	return nil
+}
+
+func (l *Lobby) Disconnect(cl *client.Client) {
+	l.removeClient(context.Background(), cl)
+}
+
+func (l *Lobby) removeClient(ctx context.Context, cl *client.Client) {
 	l.mu.Lock()
 	room := l.clients[cl.ID]
 	delete(l.clients, cl.ID)
@@ -202,8 +211,6 @@ func (l *Lobby) HandleLeave(ctx context.Context, cl *client.Client, data json.Ra
 		})
 		l.broadcastExcept(ctx, room, cl, leftMsg)
 	}
-
-	return nil
 }
 
 func (l *Lobby) broadcast(ctx context.Context, room *Room, msg event.Message) {

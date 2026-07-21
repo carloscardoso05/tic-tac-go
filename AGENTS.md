@@ -13,7 +13,7 @@ All Go commands run from `api/`, which is the module root (module name: `api`).
 cd api && go test ./...
 
 # Run a single test
-cd api && go test ./domain/room -run TestP1WinsHorizontal
+cd api && go test ./internal/domain/room -run TestP1WinsHorizontal
 
 # Start dev server with hot reload
 cd api && air
@@ -26,34 +26,47 @@ cd api && go run ./cmd/server
 
 ```
 api/
-  cmd/server/main.go   --- entrypoint (Gin + websocket)
-  domain/room/          --- pure game logic (board, tiles, victory, status)
-  event/                --- websocket event parse/send layer
-  tmp/                  --- air build output (gitignored)
+  cmd/server/main.go        --- entrypoint (Gin bootstrap + connection loop)
+  event/                     --- message types, parse/send, dispatch router
+  internal/
+    domain/room/             --- pure game logic (board, tiles, victory, status)
+    lobby/                   --- room hub: create, join, mark, leave, broadcast
+    transport/               --- websocket accept/read/write wrappers
+    client/                  --- connected player state (ID, name, conn)
+  tmp/                       --- air build output (gitignored)
 ```
 
-`domain/room` has no framework dependencies and is the only tested package.
+`internal/domain/room` has no framework dependencies and is the only tested package.
+
+### Flow
+
+Client connects via `GET /ws` → WebSocket upgrade → connection loop reads `event.Message` → `event.Router` dispatches by `msg.Type` string to a lobby handler → lobby calls domain logic and broadcasts to room members.
 
 ## Code generation
 
-`Tile` and `Status` enums in `domain/room/room.go` use `go:generate stringer`. After changing enum values, regenerate:
+`Tile` and `Status` enums in `internal/domain/room/room.go` use `go:generate stringer`. After changing enum values, regenerate:
 
 ```
-cd api && go generate ./domain/room
+cd api && go generate ./internal/domain/room
 ```
 
 This updates `tile_string.go` and `status_string.go` (committed, DO NOT EDIT by hand).
+
+## Event protocol
+
+- Messages are flat JSON: `{"type":"mark","data":{"room":"uuid","tile":0}}`
+- `EventType` is a `string` (not `uint`). Defined in `api/event/event.go`.
+- `event.Message.Data` is `json.RawMessage` — human-readable on the wire, no base64 encoding.
+- Dispatch table in `event/router.go`: register handlers with `router.Handle("create", handler)`.
+- Handler signature: `func(ctx context.Context, cl *client.Client, data json.RawMessage) error`
+- `ctx` is **not** stored in the `Client` struct — it's passed per operation (Go convention).
 
 ## Tests
 
 - Test framework: `github.com/stretchr/testify` (assert style)
 - No mocks or external dependencies needed
-- Test file: `api/domain/room/room_test.go`
+- Test file: `api/internal/domain/room/room_test.go`
 - Helper `newDefaultRoom()` creates a room with two players "Player 1" / "Player 2"
-
-## WebSocket events
-
-Event types defined in `api/event/event.go`. The server entrypoint (`cmd/server/main.go`) currently only partially handles `GameEnded` events — the other event types (`TileMarked`, `UserJoined`, `UserLeft`) have cases but no implementation yet. This is early-stage (WIP).
 
 ## Style notes
 

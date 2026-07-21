@@ -1,69 +1,53 @@
 package main
 
 import (
-	"api/domain/room"
 	"api/event"
-	"context"
-	"fmt"
+	"api/internal/client"
+	"api/internal/lobby"
+	"api/internal/transport"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
-type Player struct {
-	ID   uuid.UUID
-	Name string
-	ctx  context.Context
-	conn *websocket.Conn
-}
-
-type Hub struct {
-	rooms map[uuid.UUID]room.Room
-}
-
 func main() {
-	router := gin.Default()
+	l := lobby.New()
+	router := setupRouter(l)
 
-	router.GET("/rooms", func(ctx *gin.Context) {
-		conn, err := websocket.Accept(ctx.Writer, ctx.Request, nil)
+	r := gin.Default()
+	r.GET("/ws", func(c *gin.Context) {
+		conn, err := transport.Accept(c)
 		if err != nil {
 			return
 		}
-		defer conn.Close(websocket.StatusNormalClosure, "Bye")
 
-		wrapper := new(event.Wrapper)
-		for {
-			/*
-				1. ler e validar wrapper -> w := EventWrapper
-				2. identificar tipo do evento
-				3. fazer um switch case: para cada tipo, fazer o parse correto e realizar uma ação
-			*/
-			err := event.ParseWrapper(ctx, conn, wrapper)
-			if err != nil {
-				return
-			}
-
-			switch wrapper.Type {
-			// case event.EventTypeErrorOcurred:
-			case event.EventTypeGameEnded:
-				event := event.ParseEvent[event.GameEnded](ctx, conn, wrapper)
-				if event == nil {
-					continue
-				}
-
-			case event.EventTypeTileMarked:
-			case event.EventTypeUserJoined:
-			case event.EventTypeUserLeft:
-			default:
-				wrapper := event.NewWrapper(
-					event.EventTypeErrorOcurred,
-					event.ErrorOcurred{Error: fmt.Errorf("EventType %s is invalid", wrapper.Type)},
-				)
-				event.Send(ctx, conn, wrapper)
-			}
-		}
+		handleConn(c, conn, router, l)
+		conn.CloseNow()
 	})
 
-	router.Run()
+	r.Run()
+}
+
+func handleConn(ctx *gin.Context, conn *websocket.Conn, router *event.Router, l *lobby.Lobby) {
+	cl := client.New(conn, "")
+	defer l.Disconnect(cl)
+
+	for {
+		msg, err := transport.Read(ctx, conn)
+		if err != nil {
+			return
+		}
+		if err := router.Route(ctx, cl, msg); err != nil {
+			return
+		}
+	}
+}
+
+func setupRouter(l *lobby.Lobby) *event.Router {
+	router := event.NewRouter()
+	router.Handle("create", l.HandleCreate)
+	router.Handle("join", l.HandleJoin)
+	router.Handle("mark", l.HandleMark)
+	router.Handle("leave", l.HandleLeave)
+	return router
 }
