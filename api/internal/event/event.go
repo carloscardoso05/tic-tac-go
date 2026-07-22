@@ -13,15 +13,15 @@ import (
 type EventType string
 
 const (
-	EventCreate       EventType = "create"
-	EventJoin         EventType = "join"
-	EventMark         EventType = "mark"
-	EventLeave        EventType = "leave"
-	EventRoomCreated  EventType = "room_created"
-	EventUserJoined   EventType = "user_joined"
-	EventUserLeft     EventType = "user_left"
-	EventTileMarked   EventType = "tile_marked"
-	EventGameEnded    EventType = "game_ended"
+	EventCreate        EventType = "create"
+	EventJoin          EventType = "join"
+	EventMark          EventType = "mark"
+	EventLeave         EventType = "leave"
+	EventRoomCreated   EventType = "room_created"
+	EventUserJoined    EventType = "user_joined"
+	EventUserLeft      EventType = "user_left"
+	EventTileMarked    EventType = "tile_marked"
+	EventGameEnded     EventType = "game_ended"
 	EventErrorOccurred EventType = "error_occurred"
 )
 
@@ -110,4 +110,3 @@ func WriteError(ctx context.Context, conn *websocket.Conn, err error) {
 		panic(sendErr)
 	}
 }
-
